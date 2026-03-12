@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Biscuit – nauka angielskiego</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      -webkit-tap-highlight-color: transparent;
+    }
+    @media (min-width: 600px) {
+      body { max-width: 480px; margin: 0 auto; box-shadow: 0 0 0 1px rgba(255,255,255,0.06); }
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 8px; text-align: center; }
+    .stats {
+      text-align: center;
+      font-size: 0.9rem;
+      opacity: 0.9;
+      margin-bottom: 16px;
+    }
+    .question {
+      font-size: 1.25rem;
+      font-weight: 600;
+      text-align: center;
+      padding: 20px 16px;
+      margin-bottom: 20px;
+      background: #16213e;
+      border-radius: 12px;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .options {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .option {
+      display: block;
+      width: 100%;
+      min-height: 48px;
+      padding: 16px 20px;
+      font-size: 1rem;
+      text-align: left;
+      background: #0f3460;
+      border: 2px solid transparent;
+      border-radius: 10px;
+      color: #eee;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .option:active { background: #1a4a7a; }
+    .option.correct { border-color: #2ecc71; background: #1e5c3a; }
+    .option.wrong { border-color: #e74c3c; background: #5c1e1e; }
+    .option:disabled { cursor: default; opacity: 0.9; }
+    .game-over {
+      text-align: center;
+      padding: 24px;
+    }
+    .game-over h2 { margin-bottom: 12px; }
+    .game-over p { margin: 8px 0; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <h1>Biscuit</h1>
+  <div class="stats" id="stats">Pozostało: <span id="remaining">0</span> · Odpowiedzi: <span id="answers">0</span></div>
+  <div id="play">
+    <p id="loading" style="text-align: center; margin-top: 2rem;">Ładowanie…</p>
+    <div class="question hidden" id="question"></div>
+    <div class="options hidden" id="options"></div>
+  </div>
+  <div id="gameover" class="game-over hidden">
+    <h2>Koniec gry</h2>
+    <p id="finalMessage"></p>
+    <p>Odpowiedzi: <span id="totalAnswers"></span></p>
+  </div>
+
+  <script>
+    (function () {
+      const DEFAULT_PHRASES = {
+        "It's not quite right.": "Nie jest do końca dobry.",
+        "Let's try again!": "Spróbujmy jeszcze raz!",
+        "No problem!": "Nie ma problemu!",
+        "Yuck!": "Fuj!",
+        "Can I have a tomato and cucumber salad, please?": "Poproszę o sałatkę z pomidorów i ogórków.",
+        "Eat in?": "Na miejscu?",
+        "Here you are.": "Proszę (przy podawaniu).",
+        "I'm sorry, ...": "Przepraszam, ...",
+        "Take out?": "Na wynos?",
+        "That's £4.50, please.": "Poproszę 4 funty i 50 pensów."
+      };
+      const DEFAULT_DICT = {
+        "biscuit": "ciastko", "bread": "chleb", "cake": "ciasto", "cheese": "ser",
+        "ice cream": "lody", "jam": "dżem", "pasta": "makaron", "pizza": "pizza",
+        "sausage": "kiełbasa", "strawberry": "truskawka", "bean": "fasola",
+        "beetroot": "burak czerwony", "cabbage": "kapusta", "carrot": "marchewka",
+        "cucumber": "ogórek", "onion": "cebula", "red pepper": "czerwona papryka",
+        "tomato": "pomidor", "bacon": "bekon", "blueberries": "jagody", "chicken": "kurczak",
+        "grapes": "winogrona", "ham": "szynka", "lemon": "cytryna", "lettuce": "sałata",
+        "meat": "mięso", "mushroom": "grzyb", "pineapple": "ananas", "potato": "ziemniak",
+        "rice": "ryż"
+      };
+
+      let PHRASES = { ...DEFAULT_PHRASES };
+      let DICT = { ...DEFAULT_DICT };
+
+      async function loadData() {
+        try {
+          const [pr, dc] = await Promise.all([
+            fetch('phrases.json').then((r) => r.ok ? r.json() : DEFAULT_PHRASES),
+            fetch('dict.json').then((r) => r.ok ? r.json() : DEFAULT_DICT)
+          ]);
+          PHRASES = pr && Object.keys(pr).length ? pr : DEFAULT_PHRASES;
+          DICT = dc && Object.keys(dc).length ? dc : DEFAULT_DICT;
+        } catch (_) {}
+      }
+
+      function objToPairs(obj) {
+        return Object.entries(obj).map(([en, pl]) => ({ en, pl }));
+      }
+
+      let phrasesPool = objToPairs(PHRASES);
+      let dictPool = objToPairs(DICT);
+
+      function buildInitialStack() {
+        const stack = [];
+        phrasesPool.forEach(({ en, pl }) => {
+          stack.push({ pool: 'phrases', en, pl, show: 'en' });
+          stack.push({ pool: 'phrases', en, pl, show: 'pl' });
+        });
+        dictPool.forEach(({ en, pl }) => {
+          stack.push({ pool: 'dict', en, pl, show: 'en' });
+          stack.push({ pool: 'dict', en, pl, show: 'pl' });
+        });
+        return shuffle(stack);
+      }
+
+      function shuffle(arr) {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      }
+
+      function insertAtRandomPositions(stack, item, count) {
+        const next = stack.slice();
+        for (let i = 0; i < count; i++) {
+          const pos = Math.floor(Math.random() * (next.length + 1));
+          next.splice(pos, 0, item);
+        }
+        return next;
+      }
+
+      let stack = [];
+      let totalAnswers = 0;
+
+      const questionEl = document.getElementById('question');
+      const optionsEl = document.getElementById('options');
+      const remainingEl = document.getElementById('remaining');
+      const answersEl = document.getElementById('answers');
+      const playDiv = document.getElementById('play');
+      const gameoverDiv = document.getElementById('gameover');
+      const totalAnswersEl = document.getElementById('totalAnswers');
+      const finalMessageEl = document.getElementById('finalMessage');
+      const loadingEl = document.getElementById('loading');
+
+      function getOtherValuesInSameLanguage(pool, needPolish) {
+        const list = pool === 'phrases' ? phrasesPool : dictPool;
+        return list.map((pair) => (needPolish ? pair.pl : pair.en));
+      }
+
+      function pickWrongOptions(pool, correctAnswer, needPolish) {
+        const allInLang = getOtherValuesInSameLanguage(pool, needPolish);
+        let others = allInLang.filter((v) => v !== correctAnswer);
+        if (others.length === 0) return [];
+        const out = [];
+        while (out.length < 3) out.push(others[out.length % others.length]);
+        return shuffle(out);
+      }
+
+      function render() {
+        loadingEl.classList.add('hidden');
+        questionEl.classList.remove('hidden');
+        optionsEl.classList.remove('hidden');
+        remainingEl.textContent = stack.length;
+        answersEl.textContent = totalAnswers;
+
+        if (stack.length === 0) {
+          playDiv.classList.add('hidden');
+          gameoverDiv.classList.remove('hidden');
+          totalAnswersEl.textContent = totalAnswers;
+          finalMessageEl.textContent = 'Brawo! Odpowiedziałeś na wszystkie pytania.';
+          return;
+        }
+
+        const card = stack[0];
+        const showEn = card.show === 'en';
+        const displayed = showEn ? card.en : card.pl;
+        const correctAnswer = showEn ? card.pl : card.en;
+
+        questionEl.textContent = displayed;
+
+        const needPolish = card.show === 'en';
+        const wrong = pickWrongOptions(card.pool, correctAnswer, needPolish);
+        const optionsList = shuffle([correctAnswer, ...wrong]);
+
+        optionsEl.innerHTML = '';
+        optionsList.forEach((text) => {
+          const btn = document.createElement('button');
+          btn.className = 'option';
+          btn.textContent = text;
+          btn.addEventListener('click', () => onAnswer(btn, text === correctAnswer, card));
+          optionsEl.appendChild(btn);
+        });
+      }
+
+      function onAnswer(clickedBtn, correct, card) {
+        totalAnswers++;
+        const buttons = optionsEl.querySelectorAll('.option');
+        buttons.forEach((b) => {
+          b.disabled = true;
+          if (b.textContent === (card.show === 'en' ? card.pl : card.en)) b.classList.add('correct');
+          else if (b === clickedBtn && !correct) b.classList.add('wrong');
+        });
+
+        stack = stack.slice(1);
+
+        if (!correct) {
+          stack = insertAtRandomPositions(stack, card, 2);
+        }
+
+        setTimeout(() => {
+          render();
+        }, 800);
+      }
+
+      async function init() {
+        loadingEl.classList.remove('hidden');
+        await loadData();
+        phrasesPool = objToPairs(PHRASES);
+        dictPool = objToPairs(DICT);
+        stack = buildInitialStack();
+        render();
+      }
+      init();
+    })();
+  </script>
+</body>
+</html>
