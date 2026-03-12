@@ -73,7 +73,7 @@
 </head>
 <body>
   <h1>Biscuit</h1>
-  <div class="stats" id="stats">Pozostało: <span id="remaining">0</span> · Odpowiedzi: <span id="answers">0</span></div>
+  <div class="stats" id="stats">Pozostało: <span id="remaining">0</span> · Odpowiedzi: <span id="answers">0</span> · Czas: <span id="elapsed">0:00</span></div>
   <div id="play">
     <p id="loading" style="text-align: center; margin-top: 2rem;">Ładowanie…</p>
     <div class="question hidden" id="question"></div>
@@ -83,8 +83,11 @@
     <h2>Koniec gry</h2>
     <p id="finalMessage"></p>
     <p>Odpowiedzi: <span id="totalAnswers"></span></p>
+    <p>Czas: <span id="totalTime"></span></p>
+    <button type="button" id="shareScreenshot" class="option" style="margin-top: 16px;">Pochwal się wynikiem (zrzut ekranu)</button>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script>
     (function () {
       const DEFAULT_PHRASES = {
@@ -132,6 +135,8 @@
       let phrasesPool = objToPairs(PHRASES);
       let dictPool = objToPairs(DICT);
 
+      const INITIAL_QUESTIONS = 20;
+
       function buildInitialStack() {
         const stack = [];
         phrasesPool.forEach(({ en, pl }) => {
@@ -142,7 +147,7 @@
           stack.push({ pool: 'dict', en, pl, show: 'en' });
           stack.push({ pool: 'dict', en, pl, show: 'pl' });
         });
-        return shuffle(stack);
+        return shuffle(stack).slice(0, INITIAL_QUESTIONS);
       }
 
       function shuffle(arr) {
@@ -165,6 +170,8 @@
 
       let stack = [];
       let totalAnswers = 0;
+      let startTime = null;
+      let timerInterval = null;
 
       const questionEl = document.getElementById('question');
       const optionsEl = document.getElementById('options');
@@ -174,7 +181,36 @@
       const gameoverDiv = document.getElementById('gameover');
       const totalAnswersEl = document.getElementById('totalAnswers');
       const finalMessageEl = document.getElementById('finalMessage');
+      const totalTimeEl = document.getElementById('totalTime');
+      const shareScreenshotBtn = document.getElementById('shareScreenshot');
       const loadingEl = document.getElementById('loading');
+      const elapsedEl = document.getElementById('elapsed');
+
+      function formatTime(ms) {
+        const s = Math.floor(ms / 1000);
+        const m = Math.floor(s / 60);
+        return m > 0 ? `${m} min ${s % 60} s` : `${s} s`;
+      }
+
+      function formatTimeShort(ms) {
+        const s = Math.floor(ms / 1000);
+        const m = Math.floor(s / 60);
+        return `${m}:${String(s % 60).padStart(2, '0')}`;
+      }
+
+      function startTimer() {
+        if (startTime !== null) return;
+        startTime = Date.now();
+        elapsedEl.textContent = formatTimeShort(0);
+        timerInterval = setInterval(() => {
+          elapsedEl.textContent = formatTimeShort(Date.now() - startTime);
+        }, 1000);
+      }
+
+      function stopTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = null;
+      }
 
       function getOtherValuesInSameLanguage(pool, needPolish) {
         const list = pool === 'phrases' ? phrasesPool : dictPool;
@@ -196,11 +232,16 @@
         optionsEl.classList.remove('hidden');
         remainingEl.textContent = stack.length;
         answersEl.textContent = totalAnswers;
+        if (stack.length > 0) startTimer();
+        if (elapsedEl && startTime !== null) elapsedEl.textContent = formatTimeShort(Date.now() - startTime);
 
         if (stack.length === 0) {
+          stopTimer();
           playDiv.classList.add('hidden');
           gameoverDiv.classList.remove('hidden');
           totalAnswersEl.textContent = totalAnswers;
+          const elapsedMs = startTime ? Date.now() - startTime : 0;
+          if (totalTimeEl) totalTimeEl.textContent = formatTime(elapsedMs);
           finalMessageEl.textContent = 'Brawo! Odpowiedziałeś na wszystkie pytania.';
           return;
         }
@@ -254,6 +295,35 @@
         stack = buildInitialStack();
         render();
       }
+      function captureScreenshot() {
+        if (typeof html2canvas === 'undefined') {
+          alert('Funkcja zrzutu ekranu nie jest dostępna.');
+          return;
+        }
+        shareScreenshotBtn.disabled = true;
+        shareScreenshotBtn.textContent = 'Przygotowuję…';
+        html2canvas(document.body, {
+          useCORS: true,
+          allowTaint: true,
+          scale: window.devicePixelRatio || 1,
+          logging: false
+        }).then((canvas) => {
+          canvas.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'biscuit-wynik.png';
+            a.click();
+            URL.revokeObjectURL(url);
+          }, 'image/png');
+        }).catch(() => alert('Nie udało się zrobić zrzutu ekranu.')).finally(() => {
+          shareScreenshotBtn.disabled = false;
+          shareScreenshotBtn.textContent = 'Pochwal się wynikiem (zrzut ekranu)';
+        });
+      }
+
+      if (shareScreenshotBtn) shareScreenshotBtn.addEventListener('click', captureScreenshot);
+
       init();
     })();
   </script>
