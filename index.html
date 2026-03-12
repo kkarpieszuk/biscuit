@@ -82,7 +82,7 @@
   <div id="gameover" class="game-over hidden">
     <h2>Koniec gry</h2>
     <p id="finalMessage"></p>
-    <p>Odpowiedzi: <span id="totalAnswers"></span></p>
+    <p>Odpowiedzi: <span id="totalAnswers"></span> <span id="mistakesInfo"></span></p>
     <p>Czas: <span id="totalTime"></span></p>
     <button type="button" id="shareScreenshot" class="option" style="margin-top: 16px;">Pochwal się wynikiem (zrzut ekranu)</button>
   </div>
@@ -170,6 +170,7 @@
 
       let stack = [];
       let totalAnswers = 0;
+      let mistakes = 0;
       let startTime = null;
       let timerInterval = null;
 
@@ -180,6 +181,7 @@
       const playDiv = document.getElementById('play');
       const gameoverDiv = document.getElementById('gameover');
       const totalAnswersEl = document.getElementById('totalAnswers');
+      const mistakesInfoEl = document.getElementById('mistakesInfo');
       const finalMessageEl = document.getElementById('finalMessage');
       const totalTimeEl = document.getElementById('totalTime');
       const shareScreenshotBtn = document.getElementById('shareScreenshot');
@@ -240,6 +242,15 @@
           playDiv.classList.add('hidden');
           gameoverDiv.classList.remove('hidden');
           totalAnswersEl.textContent = totalAnswers;
+          if (mistakesInfoEl) {
+            mistakesInfoEl.textContent = mistakes === 0
+              ? '(Bez pomyłek!)'
+              : mistakes === 1
+                ? '(1 pomyłka)'
+                : mistakes <= 4
+                  ? `(${mistakes} pomyłki)`
+                  : `(${mistakes} pomyłek)`;
+          }
           const elapsedMs = startTime ? Date.now() - startTime : 0;
           if (totalTimeEl) totalTimeEl.textContent = formatTime(elapsedMs);
           finalMessageEl.textContent = 'Brawo! Odpowiedziałeś na wszystkie pytania.';
@@ -269,6 +280,7 @@
 
       function onAnswer(clickedBtn, correct, card) {
         totalAnswers++;
+        if (!correct) mistakes++;
         const buttons = optionsEl.querySelectorAll('.option');
         buttons.forEach((b) => {
           b.disabled = true;
@@ -282,9 +294,10 @@
           stack = insertAtRandomPositions(stack, card, 2);
         }
 
+        const delayMs = correct ? 800 : 4000;
         setTimeout(() => {
           render();
-        }, 800);
+        }, delayMs);
       }
 
       async function init() {
